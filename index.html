@@ -1,0 +1,220 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>Registro de Asistencia con QR</title>
+
+<script src="https://unpkg.com/html5-qrcode/minified/html5-qrcode.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@600;700&family=Open+Sans:wght@400;600&display=swap" rel="stylesheet">
+
+<style>
+:root{--azul:#1E88E5;--verde:#43A047;--gris-claro:#F5F5F5;--rojo:#E53935;--blanco:#fff;font-family:"Open Sans",sans-serif}
+*{box-sizing:border-box}
+body{margin:0;background: linear-gradient(180deg,#f7fbff 0%,var(--gris-claro) 100%);color:#222;min-height:100vh;display:flex;align-items:center;justify-content:center;padding:20px;}
+.container{width:100%;max-width:980px;background:var(--blanco);border-radius:14px;box-shadow:0 12px 40px rgba(12,40,75,0.08);overflow:hidden;display:grid;grid-template-columns: 1fr 520px;}
+.panel-left{padding:28px;display:flex;flex-direction:column;gap:18px;align-items:flex-start;}
+.panel-right{padding:28px;background:linear-gradient(180deg,#ffffff, #fbfdff);}
+.logo{width:110px;height:110px;border-radius:12px;background:linear-gradient(135deg,var(--azul),var(--verde));display:flex;align-items:center;justify-content:center;color:white;font-family:"Montserrat",sans-serif;font-size:18px;font-weight:700;box-shadow:0 8px 22px rgba(30,136,229,0.12);}
+h1{margin:6px 0;font-family:"Montserrat",sans-serif;color:#073246;}
+p.lead{margin:0;color:#234;}
+.btn{padding:10px 14px;border-radius:10px;border:0;background:var(--azul);color:white;font-weight:700;cursor:pointer;box-shadow:0 8px 18px rgba(30,136,229,0.12);}
+.btn.secondary{background:var(--verde);box-shadow:0 8px 18px rgba(67,160,71,0.12);}
+.btn.danger{background:var(--rojo);}
+label{display:block;font-weight:700;margin-bottom:6px;color:#12304a;font-family:"Montserrat",sans-serif;}
+input{width:100%;padding:10px;border-radius:8px;border:1px solid #e6eef8;font-size:14px;}
+#qrModal{position:fixed;inset:0;display:none;align-items:center;justify-content:center;background: rgba(2,8,23,0.55);z-index:9999;}
+#qrModal .modal-card{width:90%; max-width:720px; background:white; border-radius:12px; padding:18px;box-shadow:0 20px 60px rgba(5,10,30,0.45);}
+.modal-head{display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:8px;}
+.close-qr{background:var(--rojo);color:white;border:0;padding:8px 10px;border-radius:8px;cursor:pointer;}
+.admin-box{margin-top:20px;padding:10px;border-radius:8px;background:#f0f6ff;}
+.hidden{display:none!important;}
+.qr-error{color:red;margin-top:8px;text-align:center;font-weight:600;}
+@media(max-width:920px){.container{grid-template-columns:1fr}.panel-right{order:2}.panel-left{order:1}}
+</style>
+</head>
+<body>
+<div class="container">
+  <div class="panel-left">
+    <div class="logo">EMPRESA</div>
+    <h1>Registro de Asistencia</h1>
+    <p class="lead">Escanea tu QR o registra manualmente.</p>
+    <div style="display:flex;gap:10px;">
+      <button class="btn" id="openScannerBtn">Escanear QR</button>
+      <button class="btn secondary" id="genQrBtn">Generar mi QR</button>
+    </div>
+    <div class="admin-box">
+      <strong>Acceso Administrador</strong><br>
+      <input type="password" id="adminPass" placeholder="Contraseña">
+      <button class="btn secondary" id="adminBtn">Entrar</button>
+      <button class="btn danger hidden" id="exportBtn">Exportar Excel</button>
+    </div>
+  </div>
+
+  <div class="panel-right">
+    <form id="attForm" onsubmit="return false;">
+      <label>Nombre completo</label>
+      <input id="name" type="text" required>
+      <label>Número de empleado</label>
+      <input id="empNo" type="text" required>
+      <label>Puesto</label>
+      <input id="position" type="text" required placeholder="Escribe tu puesto">
+      <label>Fecha</label>
+      <input id="date" type="date" required>
+      <label>Entrada</label>
+      <input id="timeIn" type="time" required readonly>
+      <label>Salida</label>
+      <input id="timeOut" type="time" readonly>
+      <div style="margin-top:10px;display:flex;justify-content:flex-end;gap:10px;">
+        <button class="btn secondary" id="saveBtn">Guardar asistencia</button>
+      </div>
+    </form>
+    <div id="generatedQr" style="margin-top:15px;"></div>
+  </div>
+</div>
+
+<div id="qrModal">
+  <div class="modal-card">
+    <div class="modal-head">
+      <strong>Escanear QR</strong>
+      <button class="close-qr" id="closeQrBtn">Cerrar</button>
+    </div>
+    <div id="reader" style="width:100%;max-width:500px;margin:auto;"></div>
+    <p style="text-align:center; margin-top:8px;">O pega tu código QR aquí:</p>
+    <input type="text" id="manualQr" placeholder="Pega tu código QR" style="width:100%;padding:8px;border-radius:6px;border:1px solid #ccc;">
+    <button class="btn secondary" id="manualQrBtn" style="margin-top:6px; width:100%;">Registrar desde código</button>
+    <div class="qr-error" id="qrErrorMsg"></div>
+  </div>
+</div>
+
+<script>
+const nameInput=document.getElementById('name');
+const empInput=document.getElementById('empNo');
+const posInput=document.getElementById('position');
+const dateInput=document.getElementById('date');
+const timeIn=document.getElementById('timeIn');
+const timeOut=document.getElementById('timeOut');
+const STORAGE_KEY="asistencias_v7";
+const qrErrorMsg=document.getElementById('qrErrorMsg');
+let scanner=null;
+
+function loadRecords(){return JSON.parse(localStorage.getItem(STORAGE_KEY)||"[]")}
+function saveRecords(arr){localStorage.setItem(STORAGE_KEY,JSON.stringify(arr))}
+function getCurrentTime(){const d=new Date();return d.toTimeString().split(" ")[0].substring(0,5);}
+
+// Guardar asistencia manual
+document.getElementById('saveBtn').addEventListener('click',()=>{
+  const records=loadRecords();
+  const today=dateInput.value;
+  let existing=records.find(r=>r.emp===empInput.value && r.date===today);
+
+  if(existing){
+    alert(`Ya registraste tu asistencia para hoy (${today})`);
+    return;
+  }
+  if(!nameInput.value.trim()||!empInput.value.trim()||!posInput.value.trim()){alert("Completa todos los campos");return;}
+
+  const rec={name:nameInput.value.trim(),emp:empInput.value.trim(),pos:posInput.value.trim(),date:today,timeIn:getCurrentTime(),timeOut:''};
+  records.push(rec);saveRecords(records);
+  alert("Entrada registrada correctamente. Para salida, vuelve a escanear tu QR.");
+});
+
+// Generar QR y descargar
+document.getElementById('genQrBtn').addEventListener('click',()=>{
+  const data={name:nameInput.value.trim(),emp:empInput.value.trim(),pos:posInput.value.trim()};
+  if(!data.name||!data.emp||!data.pos){alert("Llena nombre, número y puesto");return;}
+  const qrContainer=document.getElementById("generatedQr");
+  qrContainer.innerHTML="";
+  new QRCode(qrContainer,{text:JSON.stringify(data),width:200,height:200});
+  setTimeout(()=>{
+    const img=qrContainer.querySelector("img");
+    if(img){const link=document.createElement("a");link.href=img.src;link.download=`${data.emp}_QR.png`;link.click();}
+  },300);
+});
+
+// Escanear QR automáticamente al abrir modal
+document.getElementById('openScannerBtn').addEventListener('click', () => {
+  qrErrorMsg.textContent = "";
+  document.getElementById('qrModal').style.display = "flex";
+  scanner = new Html5Qrcode("reader");
+  
+  scanner.start(
+    { facingMode: "environment" },
+    { fps: 10, qrbox: 250 }
+  ).then(() => {}).catch(err => {
+    qrErrorMsg.textContent = "No se pudo acceder a la cámara. Por favor, registra tu código QR manualmente.";
+  });
+
+  scanner.render(qrText => {
+    handleQRScan(qrText);
+    scanner.stop().then(()=>{document.getElementById('qrModal').style.display="none";});
+  });
+});
+
+// Cerrar modal
+document.getElementById('closeQrBtn').addEventListener('click', () => {
+  if(scanner) scanner.stop();
+  document.getElementById('qrModal').style.display="none";
+});
+
+// Registrar QR manual
+document.getElementById('manualQrBtn').addEventListener('click', () => {
+  const qrText = document.getElementById('manualQr').value.trim();
+  if(!qrText){alert("Ingresa tu código QR");return;}
+  handleQRScan(qrText);
+});
+
+// Función para registrar entrada/salida
+function handleQRScan(qrText){
+  try{
+    const obj=JSON.parse(qrText);
+    if(obj.name) nameInput.value=obj.name;
+    if(obj.emp) empInput.value=obj.emp;
+    if(obj.pos) posInput.value=obj.pos;
+
+    const today=new Date().toISOString().split("T")[0];
+    dateInput.value=today;
+
+    const records=loadRecords();
+    let existing=records.find(r=>r.emp===obj.emp && r.date===today);
+
+    if(!existing){
+      const time=getCurrentTime();
+      records.push({name:obj.name,emp:obj.emp,pos:obj.pos,date:today,timeIn:time,timeOut:''});
+      alert(`Entrada registrada para ${obj.name} a las ${time}`);
+    } else if(!existing.timeOut){
+      existing.timeOut=getCurrentTime();
+      alert(`Salida registrada para ${obj.name} a las ${existing.timeOut}`);
+    } else {
+      alert(`Ya registraste entrada y salida para hoy (${obj.name})`);
+    }
+    saveRecords(records);
+  } catch {
+    qrErrorMsg.textContent="QR inválido o corrupto.";
+  }
+}
+
+// Administrador
+document.getElementById('adminBtn').addEventListener('click',()=>{
+  const pass=document.getElementById('adminPass').value;
+  if(pass==="admin123"){alert("Acceso concedido");document.getElementById('exportBtn').classList.remove('hidden');}
+  else alert("Contraseña incorrecta");
+});
+
+// Exportar Excel
+document.getElementById('exportBtn').addEventListener('click',()=>{
+  const records=loadRecords();
+  if(records.length===0){alert("No hay registros");return;}
+  const ws=XLSX.utils.json_to_sheet(records);
+  const wb=XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb,ws,"Asistencias");
+  XLSX.writeFile(wb,"asistencias.xlsx");
+});
+
+// Fecha por defecto
+dateInput.value=new Date().toISOString().split("T")[0];
+</script>
+</body>
+</html>
